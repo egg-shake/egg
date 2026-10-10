@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Golden Egg Shake</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap">
+<style>
+:root{--bg:#cfe9e0;--tile:rgba(255,255,255,.7);--panel:#ffffff;--text:#173a35;--line:#a9d3c7;--accent:#2f4bd6;--on-accent:#fff;--shadow:rgba(23,58,53,.28);
+--font:'Baloo 2',ui-rounded,system-ui,-apple-system,'Segoe UI',sans-serif;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f2a29;--tile:rgba(120,200,185,.12);--panel:#1b3b39;--text:#e5f5ef;--line:#2f5a56;--accent:#7b93ff;--on-accent:#0b1233;--shadow:rgba(0,0,0,.55)}}
+:root[data-theme="dark"]{--bg:#0f2a29;--tile:rgba(120,200,185,.12);--panel:#1b3b39;--text:#e5f5ef;--line:#2f5a56;--accent:#7b93ff;--on-accent:#0b1233;--shadow:rgba(0,0,0,.55)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+body{background-color:var(--bg);background-image:linear-gradient(var(--tile) 2px,transparent 2px),linear-gradient(90deg,var(--tile) 2px,transparent 2px);background-size:64px 64px;background-position:center;font-family:var(--font);color:var(--text)}
+[hidden]{display:none!important}
+#c{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+#c:active{cursor:grabbing}
+#hud{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 10px);display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 10px;pointer-events:none}
+.pill{background:var(--panel);color:var(--text);border:2px solid var(--line);border-radius:999px;padding:6px 14px;font:700 15px/1.2 var(--font);box-shadow:0 3px 0 var(--shadow);min-width:44px;text-align:center}
+button.pill{pointer-events:auto;cursor:pointer}
+#goal{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 80px);text-align:center;font:700 clamp(17px,3.4vw,24px)/1.3 var(--font);padding:0 16px;pointer-events:none;transition:opacity .5s}
+#goal.off{opacity:0}
+#reset:focus-visible,#again:focus-visible{outline:3px solid var(--text);outline-offset:3px}
+#sub{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);text-align:center;font:500 14px/1.3 var(--font);opacity:.75;pointer-events:none}
+#modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,30,28,.5);padding:20px}
+.card{background:var(--panel);border:2px solid var(--line);border-radius:22px;padding:26px 30px;max-width:340px;text-align:center;box-shadow:0 8px 0 var(--shadow);animation:pop .35s cubic-bezier(.3,1.5,.5,1)}
+.card h2{margin:0 0 6px;font:800 28px/1.15 var(--font)}
+.card p{margin:4px 0;font:500 17px/1.4 var(--font)}
+#again{margin-top:16px;background:var(--accent);color:var(--on-accent);border:0;border-radius:14px;padding:10px 28px;font:800 19px var(--font);cursor:pointer;box-shadow:0 4px 0 var(--shadow)}
+.share{display:inline-block;margin-top:14px;background:#1877f2;color:#fff;text-decoration:none;border-radius:14px;padding:10px 24px;font:800 18px var(--font);box-shadow:0 4px 0 var(--shadow)}
+.share:focus-visible,#motion:focus-visible{outline:3px solid var(--text);outline-offset:3px}
+@media (max-width:480px){.pill{padding:5px 10px;font-size:13px}}
+@keyframes pop{from{transform:scale(.7);opacity:0}to{transform:none;opacity:1}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Basket of eggs"></canvas>
+<div id="hud">
+  <div class="pill" id="tm">⏱ 0.0s</div>
+  <div class="pill" id="lost">🥚 Dropped: 0</div>
+  <div class="pill" id="best">🏆 —</div>
+  <button class="pill" id="reset" aria-label="Restart">↻</button>
+  <button class="pill" id="motion" hidden>📳 Motion</button>
+</div>
+<div id="goal">Shake the basket until the <b>golden egg</b> falls off the screen!</div>
+<div id="sub">Drag the basket back and forth to shake it</div>
+<div id="modal" hidden>
+  <div class="card">
+    <h2>The golden egg fell! 🎉</h2>
+    <p id="res"></p>
+    <div><a id="fb" class="share" href="#" target="_blank" rel="noopener noreferrer">Share on Facebook</a></div>
+    <button id="again">Play again</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+(()=>{
+const {Engine,Bodies,Body,Composite,Bounds}=Matter;
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const GOLD=['#fff6b0','#f7c62a','#b7840a'];
+const PAL=[['#ffffff','#f6ebd6','#d6c3a0'],['#f6dcb8','#dba46a','#a86b3b'],['#ffffff','#f0eeea','#c9c4bb'],['#f8e5c8','#e8c28c','#b88a55']];
+const N=49,COLS=7,GOLD_IDX=COLS+3;
+let W,H,DPR,R,iw,ih,t,ft,engine,bowl,home,eggs=[],gold,best=null;
+const S={};
+try{best=parseFloat(localStorage.getItem('trungvang-best'))||null}catch(e){}
+
+function size(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+
+function eggVerts(r){const a=r*.8,p=[];for(let i=0;i<16;i++){const q=i/16*Math.PI*2;p.push({x:a*Math.cos(q)*(1+.16*Math.sin(q)),y:r*Math.sin(q)})}return p}
+
+function mkEgg(x,y,r,isGold){
+  const b=Bodies.fromVertices(x,y,[eggVerts(r)],{friction:.5,frictionStatic:.8,restitution:.1,density:isGold?.0022:.001,frictionAir:.006,angle:rand(-.6,.6)});
+  b.egg={r,gold:isGold,c:isGold?GOLD:PAL[(Math.random()*PAL.length)|0],
+    sp:isGold?[]:Array.from({length:4},()=>({x:rand(-.4,.4)*r,y:rand(-.6,.6)*r,s:rand(.8,1.7)}))};
+  return b;
+}
+
+// Điều khiển rổ: bám theo mục tiêu (tx,ty), bù trọng lực, chạy 2 bước vật lý nhỏ cho ổn định
+function tick(tx,ty){
+  for(let i=0;i<2;i++){
+    Body.setVelocity(bowl,{x:clamp((tx-bowl.position.x)*.28,-34,34),y:clamp((ty-bowl.position.y)*.28,-34,34)});
+    Body.setAngularVelocity(bowl,0);
+    Body.applyForce(bowl,bowl.position,{x:0,y:-bowl.mass*engine.gravity.y*engine.gravity.scale});
+    Engine.update(engine,1000/120);
+  }
+}
+
+function build(){
+  const cw=Math.min(W*.8,560);
+  R=Math.min(cw/14,H/21);iw=14*R;ih=13*R;t=R*.6;ft=R*.9;
+  const cx=W/2,cy=H*.49,floorTop=cy+ih/2;
+  engine=Engine.create();engine.gravity.y=1.6;
+  const o={chamfer:{radius:t*.45},friction:.6,restitution:.1,density:.05};
+  const fl=Bodies.rectangle(cx,floorTop+ft/2,iw+2*t,ft,o);
+  const wl=Bodies.rectangle(cx-iw/2-t/2,cy+ft/2,t,ih+ft,o);
+  const wr=Bodies.rectangle(cx+iw/2+t/2,cy+ft/2,t,ih+ft,o);
+  bowl=Body.create({parts:[fl,wl,wr],friction:.6,restitution:.1});
+  Body.setInertia(bowl,Infinity);
+  home={x:bowl.position.x,y:bowl.position.y};
+  eggs=[];gold=null;
+  const rows=Math.ceil(N/COLS),gap=(iw-1.8*R)/(COLS-1);
+  for(let i=0;i<N;i++){
+    const row=Math.floor(i/COLS),col=i%COLS,g=i===GOLD_IDX;
+    const e=mkEgg(cx-iw/2+.9*R+col*gap+rand(-.12,.12)*R,floorTop-1.2*R-row*2.15*R,R,g);
+    if(g)gold=e;eggs.push(e);
+  }
+  Composite.add(engine.world,[bowl,...eggs]);
+  for(let i=0;i<300;i++)tick(home.x,home.y); // cho trứng lắng xuống trước khi chơi
+  eggs=eggs.filter(b=>{
+    const ok=Math.abs(b.position.x-cx)<iw/2+t&&b.position.y>cy-ih/2-R&&b.position.y<floorTop+ft;
+    if(!ok)Composite.remove(engine.world,b);return ok;
+  });
+}
+
+function updateHud(){
+  $('tm').textContent='⏱ '+S.time.toFixed(1)+'s';
+  $('lost').textContent='🥚 Dropped: '+S.lost;
+  $('best').textContent='🏆 '+(best?best.toFixed(1)+'s':'—');
+}
+
+function newGame(){
+  size();
+  for(let a=0;a<5;a++){build();if(eggs.includes(gold))break}
+  Object.assign(S,{started:false,won:false,t0:0,time:0,lost:0,shake:0,ph:0,cool:0,mx:0,my:0,dragging:false,px:0,py:0,gx:0,gy:0});
+  $('modal').hidden=true;$('goal').classList.remove('off');$('sub').hidden=false;setHint();updateHud();
+}
+
+function begin(){if(!S.started){S.started=true;S.t0=performance.now();$('goal').classList.add('off');$('sub').hidden=true}}
+
+function win(){
+  S.won=true;
+  const rec=!best||S.time<best;
+  if(rec){best=S.time;try{localStorage.setItem('trungvang-best',String(best))}catch(e){}}
+  const msg='I knocked the golden egg out in '+S.time.toFixed(1)+'s on Golden Egg Shake. Can you beat that?';
+  $('fb').href='https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(location.href)+'&quote='+encodeURIComponent(msg);
+  $('res').innerHTML='Time: <b>'+S.time.toFixed(1)+'s</b><br>Other eggs dropped: <b>'+S.lost+'</b>'+(rec?'<br>New record! 🏆':'<br>Best: '+best.toFixed(1)+'s');
+  $('modal').hidden=false;updateHud();
+}
+
+function step(dt,now){
+  let tx=home.x,ty=home.y;
+  if(S.dragging){tx=S.px+S.gx;ty=S.py+S.gy}
+  tx+=S.mx;ty+=S.my;tx=clamp(tx,home.x-R*3,home.x+R*3);ty=clamp(ty,home.y-R*2.2,home.y+R*1.8);
+  tick(tx,ty);
+  if(S.started&&!S.won)S.time=(now-S.t0)/1000;
+  eggs=eggs.filter(b=>{
+    const p=b.position;
+    if((p.x<-R||p.x>W+R||p.y>H+R)&&!Bounds.contains(bowl.bounds,p)){
+      Composite.remove(engine.world,b);
+      if(b===gold){if(!S.won)win()}else if(S.started)S.lost++;
+      return false;
+    }
+    return true;
+  });
+  updateHud();
+}
+
+function eggPath(v){
+  const n=v.length;ctx.beginPath();
+  ctx.moveTo((v[n-1].x+v[0].x)/2,(v[n-1].y+v[0].y)/2);
+  for(let i=0;i<n;i++){const k=v[(i+1)%n];ctx.quadraticCurveTo(v[i].x,v[i].y,(v[i].x+k.x)/2,(v[i].y+k.y)/2)}
+  ctx.closePath();
+}
+
+function drawEgg(b){
+  const e=b.egg,r=e.r,px=b.position.x,py=b.position.y;
+  eggPath(b.vertices);
+  const g=ctx.createRadialGradient(px-.32*r,py-.4*r,r*.08,px,py,r*1.15);
+  g.addColorStop(0,e.c[0]);g.addColorStop(.55,e.c[1]);g.addColorStop(1,e.c[2]);
+  ctx.fillStyle=g;
+  if(e.gold){ctx.shadowColor='rgba(255,196,40,.95)';ctx.shadowBlur=24}
+  ctx.fill();ctx.shadowBlur=0;
+  ctx.strokeStyle=e.gold?'#8a5e00':'rgba(60,35,15,.3)';ctx.lineWidth=e.gold?2:1.2;ctx.stroke();
+  const c=Math.cos(b.angle),s=Math.sin(b.angle);
+  ctx.fillStyle='rgba(110,70,40,.35)';
+  for(const k of e.sp){ctx.beginPath();ctx.arc(px+k.x*c-k.y*s,py+k.x*s+k.y*c,k.s,0,7);ctx.fill()}
+  if(e.gold){
+    ctx.save();ctx.translate(px,py);ctx.rotate(b.angle);ctx.fillStyle='rgba(255,255,255,.9)';ctx.beginPath();
+    for(let i=0;i<8;i++){const a=i*Math.PI/4-Math.PI/2,d=i%2?r*.1:r*.38;ctx[i?'lineTo':'moveTo'](Math.cos(a)*d,Math.sin(a)*d)}
+    ctx.closePath();ctx.fill();ctx.restore();
+  }
+}
+
+function drawBowl(){
+  for(const p of bowl.parts.slice(1)){
+    const v=p.vertices,bd=p.bounds,tall=(bd.max.y-bd.min.y)>(bd.max.x-bd.min.x);
+    ctx.beginPath();v.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.closePath();
+    const g=ctx.createLinearGradient(0,bd.min.y,0,bd.max.y);g.addColorStop(0,'#d19a5c');g.addColorStop(1,'#92602f');
+    ctx.fillStyle=g;ctx.fill();
+    ctx.save();ctx.clip();ctx.strokeStyle='rgba(55,28,8,.3)';ctx.lineWidth=2;ctx.beginPath();
+    if(tall)for(let y=bd.min.y+R*.9;y<bd.max.y;y+=R*.9){ctx.moveTo(bd.min.x,y);ctx.lineTo(bd.max.x,y)}
+    else for(let x=bd.min.x+R*1.3;x<bd.max.x;x+=R*1.3){ctx.moveTo(x,bd.min.y);ctx.lineTo(x,bd.max.y)}
+    ctx.stroke();ctx.restore();
+    ctx.beginPath();v.forEach((q,i)=>i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y));ctx.closePath();
+    ctx.strokeStyle='#5a3515';ctx.lineWidth=2.5;ctx.stroke();
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  drawBowl();
+  for(const b of eggs)if(!b.egg.gold)drawEgg(b);
+  if(eggs.includes(gold))drawEgg(gold);
+}
+
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);
+  Object.assign(S,{dragging:true,px:e.clientX,py:e.clientY,gx:bowl.position.x-e.clientX,gy:bowl.position.y-e.clientY});
+  if(!S.won)begin();
+});
+cv.addEventListener('pointermove',e=>{if(S.dragging){S.px=e.clientX;S.py=e.clientY}});
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>{S.dragging=false}));
+$('reset').addEventListener('click',newGame);
+$('again').addEventListener('click',newGame);
+addEventListener('resize',()=>{if(!S.started)newGame();else size()});
+
+// Phone motion sensor
+const mBtn=$('motion'),G={x:0,y:0};let seen=false;
+function setHint(){$('sub').textContent=S.motion?'Shake your phone, or drag the basket':'Drag the basket back and forth to shake it'}
+function onMotion(e){
+  let ax,ay;const a=e.acceleration;
+  if(a&&a.x!=null){ax=a.x;ay=a.y}
+  else{const g=e.accelerationIncludingGravity;if(!g||g.x==null)return;G.x+=(g.x-G.x)*.1;G.y+=(g.y-G.y)*.1;ax=g.x-G.x;ay=g.y-G.y}
+  seen=true;
+  const ang=(((screen.orientation&&screen.orientation.angle)??window.orientation??0)%360+360)%360;
+  const [sx,sy]=ang===90?[-ay,-ax]:ang===180?[-ax,ay]:ang===270?[ay,ax]:[ax,-ay];
+  S.mx+=(clamp(-sx*R*.3,-R*3,R*3)-S.mx)*.6;S.my+=(clamp(-sy*R*.3,-R*2.2,R*1.8)-S.my)*.6;
+  if(!S.started&&!S.won&&Math.hypot(ax,ay)>6)begin();
+}
+async function toggleMotion(){
+  if(S.motion){S.motion=false;removeEventListener('devicemotion',onMotion);S.mx=S.my=0;mBtn.textContent='📳 Motion: off';setHint();return}
+  try{
+    if(typeof DeviceMotionEvent.requestPermission==='function'&&await DeviceMotionEvent.requestPermission()!=='granted'){mBtn.textContent='📳 Blocked';return}
+  }catch(err){mBtn.textContent='📳 Blocked';return}
+  S.motion=true;seen=false;addEventListener('devicemotion',onMotion);mBtn.textContent='📳 Motion: on';setHint();
+  setTimeout(()=>{if(S.motion&&!seen)$('sub').textContent='No motion sensor available here. Drag the basket instead.'},1500);
+}
+mBtn.addEventListener('click',toggleMotion);
+if(window.DeviceMotionEvent&&matchMedia('(pointer:coarse)').matches)mBtn.hidden=false;
+
+newGame();
+let last=performance.now();
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;step(dt,now);draw();requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
