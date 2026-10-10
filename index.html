@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Golden Egg Shake</title>
+<meta name="description" content="Shake the basket until the golden egg falls off the screen. How fast can you do it?">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://egg-shake.github.io/egg/">
+<meta name="twitter:card" content="summary">
+<meta property="og:title" content="Golden Egg Shake">
+<meta property="og:description" content="Shake the basket until the golden egg falls off the screen. How fast can you do it?">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap">
 <style>
 :root{--bg:#cfe9e0;--tile:rgba(255,255,255,.7);--panel:#ffffff;--text:#173a35;--line:#a9d3c7;--accent:#2f4bd6;--on-accent:#fff;--shadow:rgba(23,58,53,.28);
@@ -29,8 +35,10 @@ button.pill{pointer-events:auto;cursor:pointer}
 .card h2{margin:0 0 6px;font:800 28px/1.15 var(--font)}
 .card p{margin:4px 0;font:500 17px/1.4 var(--font)}
 #again{margin-top:16px;background:var(--accent);color:var(--on-accent);border:0;border-radius:14px;padding:10px 28px;font:800 19px var(--font);cursor:pointer;box-shadow:0 4px 0 var(--shadow)}
-.share{display:inline-block;margin-top:14px;background:#1877f2;color:#fff;text-decoration:none;border-radius:14px;padding:10px 24px;font:800 18px var(--font);box-shadow:0 4px 0 var(--shadow)}
-.share:focus-visible,#motion:focus-visible{outline:3px solid var(--text);outline-offset:3px}
+.share{display:inline-block;margin-top:14px;background:#000;color:#fff;text-decoration:none;border-radius:14px;padding:10px 24px;font:800 18px var(--font);box-shadow:0 4px 0 var(--shadow)}
+.share:focus-visible,#motion:focus-visible,#copy:focus-visible{outline:3px solid var(--text);outline-offset:3px}
+.share.alt{border:0;cursor:pointer;background:var(--line);color:var(--text);margin-top:10px}
+.card .note{font-size:13px;opacity:.75;margin-top:8px}
 @media (max-width:480px){.pill{padding:5px 10px;font-size:13px}}
 @keyframes pop{from{transform:scale(.7);opacity:0}to{transform:none;opacity:1}}
 </style>
@@ -50,7 +58,9 @@ button.pill{pointer-events:auto;cursor:pointer}
   <div class="card">
     <h2>The golden egg fell! 🎉</h2>
     <p id="res"></p>
-    <div><a id="fb" class="share" href="#" target="_blank" rel="noopener noreferrer">Share on Facebook</a></div>
+    <div><a id="xshare" class="share" href="#" target="_blank" rel="noopener noreferrer">Share on X</a></div>
+    <div><button id="copy" class="share alt">Copy result</button></div>
+    <p id="xnote" class="note"></p>
     <button id="again">Play again</button>
   </div>
 </div>
@@ -65,6 +75,8 @@ const rand=(a,b)=>a+Math.random()*(b-a),clamp=(v,a,b)=>Math.max(a,Math.min(b,v))
 const GOLD=['#fff6b0','#f7c62a','#b7840a'];
 const PAL=[['#ffffff','#f6ebd6','#d6c3a0'],['#f6dcb8','#dba46a','#a86b3b'],['#ffffff','#f0eeea','#c9c4bb'],['#f8e5c8','#e8c28c','#b88a55']];
 const N=49,COLS=7,GOLD_IDX=COLS+3;
+// Optional: set this to the public URL of the game, e.g. 'https://username.github.io/golden-egg/'
+const SHARE_URL='https://egg-shake.github.io/egg/';
 let W,H,DPR,R,iw,ih,t,ft,engine,bowl,home,eggs=[],gold,best=null;
 const S={};
 try{best=parseFloat(localStorage.getItem('trungvang-best'))||null}catch(e){}
@@ -132,12 +144,17 @@ function newGame(){
 
 function begin(){if(!S.started){S.started=true;S.t0=performance.now();$('goal').classList.add('off');$('sub').hidden=true}}
 
+function shareUrl(){return SHARE_URL||location.href.split('#')[0].split('?')[0]}
+function shareOk(u){try{const x=new URL(u);return /^https?:$/.test(x.protocol)&&!/^(localhost|127\.|10\.|192\.168\.)/.test(x.hostname)}catch(e){return false}}
+
 function win(){
   S.won=true;
   const rec=!best||S.time<best;
   if(rec){best=S.time;try{localStorage.setItem('trungvang-best',String(best))}catch(e){}}
   const msg='I knocked the golden egg out in '+S.time.toFixed(1)+'s on Golden Egg Shake. Can you beat that?';
-  $('fb').href='https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(location.href)+'&quote='+encodeURIComponent(msg);
+  const url=shareUrl(),ok=shareOk(url);S.msg=msg+' '+url;
+  $('xshare').href=ok?'https://x.com/intent/post?text='+encodeURIComponent(msg)+'&url='+encodeURIComponent(url):'#';
+  $('xnote').textContent=ok?'':'Sharing needs a public https link. Open the game from its published URL to share it.';
   $('res').innerHTML='Time: <b>'+S.time.toFixed(1)+'s</b><br>Other eggs dropped: <b>'+S.lost+'</b>'+(rec?'<br>New record! 🏆':'<br>Best: '+best.toFixed(1)+'s');
   $('modal').hidden=false;updateHud();
 }
@@ -217,6 +234,12 @@ cv.addEventListener('pointermove',e=>{if(S.dragging){S.px=e.clientX;S.py=e.clien
 ['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>{S.dragging=false}));
 $('reset').addEventListener('click',newGame);
 $('again').addEventListener('click',newGame);
+$('xshare').addEventListener('click',e=>{if(!shareOk(shareUrl()))e.preventDefault()});
+$('copy').addEventListener('click',async()=>{
+  const b=$('copy');
+  try{await navigator.clipboard.writeText(S.msg);b.textContent='Copied!'}catch(err){window.prompt('Copy this text:',S.msg)}
+  setTimeout(()=>{b.textContent='Copy result'},1500);
+});
 addEventListener('resize',()=>{if(!S.started)newGame();else size()});
 
 // Phone motion sensor
